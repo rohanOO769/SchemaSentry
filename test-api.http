@@ -1,0 +1,19 @@
+
+### 1. Health check
+GET http://127.0.0.1:4000/health
+
+### 2. Analyze migration - DROP COLUMN
+POST http://127.0.0.1:4000/migrations/analyze
+Content-Type: application/json
+
+{
+  "sql": "ALTER TABLE users DROP COLUMN email;"
+}
+
+### 3. Analyze migration - DROP TABLE
+POST http://127.0.0.1:4000/migrations/analyze
+Content-Type: application/json
+
+{
+  "sql": "DROP TABLE users;"
+}
