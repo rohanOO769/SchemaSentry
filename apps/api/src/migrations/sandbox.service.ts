@@ -3,12 +3,28 @@
 import {
   Injectable,
   InternalServerErrorException,
+  OnApplicationBootstrap,
 } from '@nestjs/common';
 import { Client } from 'ssh2';
 import { existsSync,readFileSync } from 'node:fs';
 
+interface SandboxListItem {
+  name: string;
+}
+
+interface SandboxInspection {
+  name: string;
+  created_at: string;
+  config?: {
+    labels?: Record<string, string>;
+    lifecycle?: {
+      max_duration_secs?: number;
+    };
+  };
+}
+
 @Injectable()
-export class SandboxService {
+export class SandboxService implements OnApplicationBootstrap{
   private readonly host = process.env.SANDBOX_SSH_HOST;
   private readonly username = process.env.SANDBOX_SSH_USER;
   private readonly privateKeyPath = process.env.SANDBOX_SSH_KEY_PATH;
@@ -26,6 +42,76 @@ export class SandboxService {
       throw new Error('Sandbox SSH private key file was not found');
     }
   }  
+
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.cleanupAbandonedSandboxes();
+    } catch (error) {
+      console.error(
+        '[SchemaSentry] Sandbox recovery failed:',
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  private async cleanupAbandonedSandboxes(): Promise<void> {
+    const output = await this.runSshCommand(
+      `${this.msbPath} list --format json`,
+    );
+
+    const sandboxes = JSON.parse(output) as SandboxListItem[];
+
+    const candidates = sandboxes.filter((sandbox) =>
+      /^schemasentry-[0-9a-f]{8}$/.test(sandbox.name),
+    );
+
+    for (const candidate of candidates) {
+      const inspectionOutput = await this.runSshCommand(
+        `${this.msbPath} inspect ${candidate.name} --format json`,
+      );
+
+      const inspection = JSON.parse(
+        inspectionOutput,
+      ) as SandboxInspection;
+
+      const labels = inspection.config?.labels ?? {};
+
+      if (
+        labels.project !== 'schemasentry' ||
+        labels.purpose !== 'migration-execution'
+      ) {
+        continue;
+      }
+
+      const createdAt = Date.parse(inspection.created_at);
+      const maxDuration =
+        inspection.config?.lifecycle?.max_duration_secs;
+
+      if (
+        !Number.isFinite(createdAt) ||
+        typeof maxDuration !== 'number' ||
+        maxDuration <= 0
+      ) {
+        console.warn(
+          `[SchemaSentry] Skipping sandbox with incomplete metadata: ${candidate.name}`,
+        );
+        continue;
+      }
+
+      const ageSeconds = (Date.now() - createdAt) / 1000;
+      const safetyBufferSeconds = 300;
+
+      if (ageSeconds <= maxDuration + safetyBufferSeconds) {
+        continue;
+      }
+
+      console.warn(
+        `[SchemaSentry] Removing abandoned sandbox: ${candidate.name}`,
+      );
+
+      await this.removeSandbox(candidate.name);
+    }
+  }
 
   
   async createSandbox(sandboxName: string): Promise<void> {
