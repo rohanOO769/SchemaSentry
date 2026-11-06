@@ -57,14 +57,21 @@ export class SnapshotComparisonService {
       const newColumn = afterMap.get(key);
 
       if (!newColumn) {
+        const columnKey = `${oldColumn.table_name}.${oldColumn.column_name}`;
+        const columnStats = before.columnStatistics[columnKey];
+
+        const affectedRows = columnStats?.non_null ?? 0;
+
         changes.push({
           type: 'COLUMN_REMOVED',
-          severity: 'HIGH',
+          severity: affectedRows > 0 ? 'HIGH' : 'MEDIUM',
           table: oldColumn.table_name,
           column: oldColumn.column_name,
-          details: `Column ${oldColumn.column_name} was removed.`,
+          details:
+            affectedRows > 0
+              ? `Column ${oldColumn.column_name} was removed. It contained ${affectedRows} non-NULL values that may have been lost.`
+              : `Column ${oldColumn.column_name} was removed. No populated values were detected.`,
         });
-
         continue;
       }
 
