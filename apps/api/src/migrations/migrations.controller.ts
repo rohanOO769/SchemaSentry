@@ -70,4 +70,9 @@ export class MigrationsController {
         body.after,
       );
     }
+
+    @Post('analyze-and-execute')
+    analyzeAndExecute(@Body() dto: AnalyzeMigrationDto) {
+      return this.migrationsService.analyzeAndExecute(dto);
+    }
 }

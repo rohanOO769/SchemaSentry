@@ -7,12 +7,12 @@ import { SandboxService } from './sandbox.service';
 export class DatabaseSnapshotService {
   constructor(private readonly sandboxService: SandboxService) {}
 
-  async capture() {
+  async capture(sandboxName?: string) {
     const [schemaOutput, statsOutput, columnStatsOutput] =
       await Promise.all([
-        this.sandboxService.execute('CAPTURE_SCHEMA'),
-        this.sandboxService.execute('CAPTURE_TABLE_STATS'),
-        this.sandboxService.execute('CAPTURE_COLUMN_STATS'),
+        this.sandboxService.execute('CAPTURE_SCHEMA', sandboxName),
+        this.sandboxService.execute('CAPTURE_TABLE_STATS', sandboxName),
+        this.sandboxService.execute('CAPTURE_COLUMN_STATS', sandboxName),
       ]);
 
     return {
