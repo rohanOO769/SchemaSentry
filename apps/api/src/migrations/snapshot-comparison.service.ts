@@ -109,10 +109,20 @@ export class SnapshotComparisonService {
       }
     }
 
+    const beforeTables = new Set(
+      before.schema.map(
+        (column) => `${column.table_schema}.${column.table_name}`,
+      ),
+    );
+
     // Detect added columns.
     for (const [key, newColumn] of afterMap) {
       if (!beforeMap.has(key)) {
+        const tableKey = `${newColumn.table_schema}.${newColumn.table_name}`;
+        const tableExistedBefore = beforeTables.has(tableKey);
+
         const risky =
+          tableExistedBefore &&
           newColumn.is_nullable === 'NO' &&
           newColumn.column_default === null;
 
@@ -122,19 +132,18 @@ export class SnapshotComparisonService {
           table: newColumn.table_name,
           column: newColumn.column_name,
           details: risky
-            ? 'A NOT NULL column without a default was added.'
+            ? 'A NOT NULL column without a default was added to an existing table. Existing rows cannot satisfy this constraint without a value.'
             : 'A new column was added.',
         });
       }
     }
 
     // Detect tables added or removed.
-    const beforeTables = new Set(
-      before.schema.map((column) => column.table_name),
-    );
 
     const afterTables = new Set(
-      after.schema.map((column) => column.table_name),
+      after.schema.map(
+        (column) => `${column.table_schema}.${column.table_name}`,
+      ),
     );
 
     for (const table of beforeTables) {

@@ -6,6 +6,7 @@ import { MigrationAnalyzerService } from './migration-analyzer.service';
 import { SandboxService } from './sandbox.service';
 import { DatabaseSnapshotService } from './database-snapshot.service';
 import { SnapshotComparisonService } from './snapshot-comparison.service';
+import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class MigrationsService {
@@ -35,43 +36,86 @@ export class MigrationsService {
   }
 
   async analyzeAndExecute(dto: AnalyzeMigrationDto) {
-    const sandboxName = 'schemasentry-migration-test';
+    const sandboxName = `schemasentry-${randomUUID().slice(0, 8)}`;
 
-    // 1. Capture database state before migration.
-    const before = await this.snapshotService.capture(sandboxName);
+    // Create a fresh, isolated PostgreSQL sandbox.
+    await this.sandboxService.createSandbox(sandboxName);
 
-    // 2. Execute migration inside the same sandbox.
-    const execution = await this.sandboxService.executeMigration(
-      dto.sql,
-      sandboxName,
-    );
+    try {
+      // Initialize a predictable sample database.
+      const baselineSql = `
+        CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          email VARCHAR(255) NOT NULL UNIQUE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
 
-    // 3. Capture database state after migration.
-    const after = await this.snapshotService.capture(sandboxName);
+        INSERT INTO users (name, email) VALUES
+          ('Alice', 'alice@example.com'),
+          ('Bob', 'bob@example.com'),
+          ('Charlie', 'charlie@example.com');
+      `;
 
-    // 4. Compare both database states.
-    const comparison = this.comparisonService.compare(before, after);
+      await this.sandboxService.executeMigration(
+        baselineSql,
+        sandboxName,
+      );
 
-    // 5. Determine the CI/CD gate result.
-    const severity = comparison.summary.overallSeverity;
+      // Capture database state before migration.
+      const before = await this.snapshotService.capture(sandboxName);
 
-    const gate =
-      severity === 'HIGH'
-        ? 'BLOCKED'
-        : severity === 'MEDIUM'
-          ? 'REVIEW'
-          : 'PASS';
+      // Execute the submitted migration.
+      let execution: string;
 
-    return {
-      execution: {
-        status: 'EXECUTED',
-        output: execution,
-      },
-      gate,
-      risk: severity,
-      summary: comparison.summary,
-      changes: comparison.changes,
-      statistics: comparison.statistics,
-    };
+      try {
+        execution = await this.sandboxService.executeMigration(
+          dto.sql,
+          sandboxName,
+        );
+      } catch (error) {
+        return {
+          execution: {
+            status: 'FAILED',
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Migration execution failed',
+          },
+          gate: 'BLOCKED',
+          risk: 'UNKNOWN',
+        };
+      }
+
+      // Capture database state after migration.
+      const after = await this.snapshotService.capture(sandboxName);
+
+      // Compare database states.
+      const comparison = this.comparisonService.compare(before, after);
+
+      const severity = comparison.summary.overallSeverity;
+
+      const gate =
+        severity === 'HIGH'
+          ? 'BLOCKED'
+          : severity === 'MEDIUM'
+            ? 'REVIEW'
+            : 'PASS';
+
+      return {
+        execution: {
+          status: 'EXECUTED',
+          output: execution,
+        },
+        gate,
+        risk: severity,
+        summary: comparison.summary,
+        changes: comparison.changes,
+        statistics: comparison.statistics,
+      };
+    } finally {
+      // Always destroy the disposable sandbox.
+      await this.sandboxService.removeSandbox(sandboxName);
+    }
   }
 }
