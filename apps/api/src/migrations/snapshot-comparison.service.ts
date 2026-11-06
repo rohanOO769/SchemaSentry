@@ -206,9 +206,11 @@ export class SnapshotComparisonService {
       (change) => change.severity === 'HIGH',
     )
       ? 'HIGH'
-      : changes.some((change) => change.severity === 'LOW')
-        ? 'LOW'
-        : 'NONE';
+      : changes.some((change) => change.severity === 'MEDIUM')
+        ? 'MEDIUM'
+        : changes.some((change) => change.severity === 'LOW')
+          ? 'LOW'
+          : 'NONE';
 
     return {
       summary: {
