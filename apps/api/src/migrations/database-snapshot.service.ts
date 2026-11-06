@@ -8,15 +8,18 @@ export class DatabaseSnapshotService {
   constructor(private readonly sandboxService: SandboxService) {}
 
   async capture() {
-    const [schemaOutput, statsOutput] = await Promise.all([
-      this.sandboxService.execute('CAPTURE_SCHEMA'),
-      this.sandboxService.execute('CAPTURE_TABLE_STATS'),
-    ]);
+    const [schemaOutput, statsOutput, columnStatsOutput] =
+      await Promise.all([
+        this.sandboxService.execute('CAPTURE_SCHEMA'),
+        this.sandboxService.execute('CAPTURE_TABLE_STATS'),
+        this.sandboxService.execute('CAPTURE_COLUMN_STATS'),
+      ]);
 
     return {
       capturedAt: new Date().toISOString(),
       schema: JSON.parse(schemaOutput),
       statistics: JSON.parse(statsOutput),
+      columnStatistics: JSON.parse(columnStatsOutput),
     };
   }
 }

@@ -43,6 +43,7 @@ export class SandboxService {
       'SELECT_VERSION',
       'CAPTURE_SCHEMA',
       'CAPTURE_TABLE_STATS',
+      'CAPTURE_COLUMN_STATS',
     ];
 
     if (!allowedCommands.includes(command)) {
@@ -58,6 +59,9 @@ export class SandboxService {
 
       CAPTURE_TABLE_STATS:
         `/home/sandboxuser/.local/bin/msb exec ${this.sandboxName} -- psql -U schemasentry -d schemasentry -t -A -c "SELECT COALESCE(jsonb_object_agg(table_name, row_count), '{}'::jsonb) FROM (SELECT table_name, (xpath('/row/count/text()', query_to_xml(format('SELECT count(*) AS count FROM %I.%I', table_schema, table_name), false, true, '')))[1]::text::bigint AS row_count FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE') counts;"`,
+
+      CAPTURE_COLUMN_STATS:
+        `/home/sandboxuser/.local/bin/msb exec ${this.sandboxName} -- psql -U schemasentry -d schemasentry -t -A -c "SELECT COALESCE(jsonb_object_agg(table_name || '.' || column_name, jsonb_build_object('total_rows', total_rows, 'non_null', non_null_count)), '{}'::jsonb) FROM (SELECT c.table_name, c.column_name, (xpath('/row/total/text()', q.result))[1]::text::bigint AS total_rows, (xpath('/row/non_null/text()', q.result))[1]::text::bigint AS non_null_count FROM information_schema.columns c CROSS JOIN LATERAL (SELECT query_to_xml(format('SELECT count(*) AS total, count(%I) AS non_null FROM %I.%I', c.column_name, c.table_schema, c.table_name), false, true, '') AS result) q WHERE c.table_schema = 'public') column_stats;"`,
     };
 
     return new Promise((resolve, reject) => {

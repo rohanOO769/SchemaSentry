@@ -15,6 +15,13 @@ interface DatabaseSnapshot {
   capturedAt: string;
   schema: SchemaColumn[];
   statistics: Record<string, number>;
+  columnStatistics: Record<
+    string,
+    {
+      total_rows: number;
+      non_null: number;
+    }
+  >;
 }
 
 @Injectable()
@@ -160,6 +167,30 @@ export class SnapshotComparisonService {
           severity: 'HIGH',
           table,
           details: `Row count decreased from ${beforeCount} to ${afterCount}. ${beforeCount - afterCount} rows may have been lost.`,
+        });
+      }
+    }
+
+    // Detect potential data loss through increased NULL values.
+    for (const [columnKey, beforeStats] of Object.entries(
+      before.columnStatistics,
+    )) {
+      const afterStats = after.columnStatistics[columnKey];
+
+      if (!afterStats) {
+        continue;
+      }
+
+      const beforeNulls = beforeStats.total_rows - beforeStats.non_null;
+      const afterNulls = afterStats.total_rows - afterStats.non_null;
+
+      if (afterNulls > beforeNulls) {
+        changes.push({
+          type: 'NULL_COUNT_INCREASED',
+          severity: 'HIGH',
+          table: columnKey.split('.')[0],
+          column: columnKey.split('.').slice(1).join('.'),
+          details: `NULL values increased from ${beforeNulls} to ${afterNulls}. ${afterNulls - beforeNulls} additional NULL values detected.`,
         });
       }
     }
