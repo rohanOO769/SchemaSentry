@@ -114,8 +114,14 @@ export class MigrationsService {
         statistics: comparison.statistics,
       };
     } finally {
-      // Always destroy the disposable sandbox.
-      await this.sandboxService.removeSandbox(sandboxName);
-    }
+        try {
+          await this.sandboxService.removeSandbox(sandboxName);
+        } catch (cleanupError) {
+          console.error(
+            `[SchemaSentry] Failed to remove sandbox: ${sandboxName}`,
+            cleanupError,
+          );
+        }
+      }
   }
 }
