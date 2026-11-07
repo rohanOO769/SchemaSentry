@@ -33,8 +33,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const core = require('@actions/core');
-
+            
             const apiUrl = process.env.SCHEMASENTRY_API_URL?.replace(/\/+$/, '');
             const apiKey = process.env.SCHEMASENTRY_API_KEY;
 
