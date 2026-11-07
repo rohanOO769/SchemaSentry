@@ -6,6 +6,7 @@ import { MigrationAnalyzerService } from './migration-analyzer.service';
 import { SandboxService } from './sandbox.service';
 import { DatabaseSnapshotService } from './database-snapshot.service';
 import { SnapshotComparisonService } from './snapshot-comparison.service';
+import { AiExplanationService } from './ai-explanation.service';
 import { randomUUID } from 'node:crypto';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class MigrationsService {
     private readonly sandboxService: SandboxService,
     private readonly snapshotService: DatabaseSnapshotService,
     private readonly comparisonService: SnapshotComparisonService,
+    private readonly aiExplanationService: AiExplanationService,
   ) {}
 
   analyze(dto: AnalyzeMigrationDto) {
@@ -101,6 +103,26 @@ export class MigrationsService {
           : severity === 'MEDIUM'
             ? 'REVIEW'
             : 'PASS';
+      
+      let aiExplanation = null;
+
+      try {
+        aiExplanation = await this.aiExplanationService.explain({
+          sql: dto.sql,
+          intent: dto.intent,
+          expectedImpact: dto.expectedImpact,
+          risk: severity,
+          gate,
+          summary: comparison.summary,
+          changes: comparison.changes,
+          statistics: comparison.statistics,
+        });
+      } catch (error) {
+        console.error(
+          '[SchemaSentry] AI explanation unavailable:',
+          error instanceof Error ? error.message : error,
+        );
+      }
 
       return {
         execution: {
@@ -112,6 +134,7 @@ export class MigrationsService {
         summary: comparison.summary,
         changes: comparison.changes,
         statistics: comparison.statistics,
+        aiExplanation,
       };
     } finally {
         try {

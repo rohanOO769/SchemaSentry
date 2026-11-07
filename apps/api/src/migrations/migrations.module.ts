@@ -7,6 +7,7 @@ import { MigrationAnalyzerService } from './migration-analyzer.service';
 import { DatabaseSnapshotService } from './database-snapshot.service';
 import { SandboxService } from './sandbox.service';
 import { SnapshotComparisonService } from './snapshot-comparison.service';
+import { AiExplanationService } from './ai-explanation.service';
 
 @Module({
   controllers: [MigrationsController],
@@ -16,6 +17,7 @@ import { SnapshotComparisonService } from './snapshot-comparison.service';
     DatabaseSnapshotService,
     SandboxService,
     SnapshotComparisonService,
+    AiExplanationService,
   ],
 })
 export class MigrationsModule {}
