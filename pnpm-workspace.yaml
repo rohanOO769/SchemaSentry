@@ -1,6 +1,6 @@
 packages:
   - 'apps/*'
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  cpu-features: set this to true or false
-  ssh2: set this to true or false
+  '@parcel/watcher': true
+  cpu-features: true
+  ssh2: true
