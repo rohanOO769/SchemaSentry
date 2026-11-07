@@ -1,0 +1,230 @@
+name: SchemaSentry Migration Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'migrations/**/*.sql'
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  verify-migrations:
+    name: Verify database migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Analyze changed SQL migrations
+        uses: actions/github-script@v7
+        env:
+          SCHEMASENTRY_API_URL: ${{ secrets.SCHEMASENTRY_API_URL }}
+          SCHEMASENTRY_API_KEY: ${{ secrets.SCHEMASENTRY_API_KEY }}
+        with:
+          script: |
+            const fs = require('fs');
+            const core = require('@actions/core');
+
+            const apiUrl = process.env.SCHEMASENTRY_API_URL?.replace(/\/+$/, '');
+            const apiKey = process.env.SCHEMASENTRY_API_KEY;
+
+            if (!apiUrl || !apiKey) {
+              core.setFailed('SchemaSentry API URL or API key is missing from repository secrets.');
+              return;
+            }
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100
+              }
+            );
+
+            const sqlFiles = files.filter(file =>
+              file.filename.startsWith('migrations/') &&
+              file.filename.endsWith('.sql') &&
+              file.status !== 'removed'
+            );
+
+            if (sqlFiles.length === 0) {
+              core.notice('No changed SQL migration files found.');
+              return;
+            }
+
+            const results = [];
+
+            for (const file of sqlFiles) {
+              core.info(`Analyzing ${file.filename}`);
+
+              const sql = fs.readFileSync(file.filename, 'utf8');
+
+              const intentMatch = sql.match(/^\s*--\s*intent:\s*(.*?)\s*$/im);
+              const impactMatch = sql.match(/^\s*--\s*expected-impact:\s*(.*?)\s*$/im);
+
+              if (Buffer.byteLength(sql, 'utf8') > 50000) {
+                results.push({
+                  file: file.filename,
+                  error: 'SQL file exceeds the API 50,000-character limit.'
+                });
+                continue;
+              }
+
+              const payload = {
+                sql,
+                intent: intentMatch?.[1] || undefined,
+                expectedImpact: impactMatch?.[1] || undefined
+              };
+
+              try {
+                const response = await fetch(
+                  `${apiUrl}/migrations/analyze-and-execute`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${apiKey}`,
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(180000)
+                  }
+                );
+
+                const body = await response.text();
+
+                if (!response.ok) {
+                  throw new Error(`API returned HTTP ${response.status}: ${body.slice(0, 1000)}`);
+                }
+
+                const result = JSON.parse(body);
+
+                results.push({
+                  file: file.filename,
+                  gate: result.gate,
+                  risk: result.risk,
+                  execution: result.execution?.status,
+                  alignment: result.aiExplanation?.intentAlignment || 'UNAVAILABLE',
+                  explanation: result.aiExplanation?.explanation || 'AI explanation unavailable.',
+                  recommendation: result.aiExplanation?.recommendation || 'No recommendation available.',
+                  changes: result.changes || []
+                });
+
+              } catch (error) {
+                results.push({
+                  file: file.filename,
+                  error: error.message
+                });
+              }
+            }
+
+            const blocked = results.some(r =>
+              r.error || r.gate === 'BLOCKED' ||
+              !['PASS', 'REVIEW'].includes(r.gate)
+            );
+
+            const hasReview = results.some(r => r.gate === 'REVIEW');
+
+            let report = [
+              '<!-- schemasentry-report -->',
+              '## SchemaSentry Migration Verification',
+              '',
+              `Analyzed **${results.length}** SQL migration file(s).`,
+              ''
+            ];
+
+            for (const result of results) {
+              report.push(`### ${result.file}`, '');
+
+              if (result.error) {
+                report.push(
+                  `**ERROR:** ${result.error}`,
+                  ''
+                );
+                continue;
+              }
+
+              report.push(
+                `- **Decision:** ${result.gate}`,
+                `- **Risk:** ${result.risk}`,
+                `- **Execution:** ${result.execution}`,
+                `- **Intent alignment:** ${result.alignment}`,
+                '',
+                '**Explanation**',
+                result.explanation,
+                '',
+                '**Recommendation**',
+                result.recommendation,
+                ''
+              );
+
+              if (result.changes.length > 0) {
+                report.push('**Observed changes**', '');
+
+                for (const change of result.changes) {
+                  report.push(
+                    `- ${change.type}: ${change.table || 'unknown table'}` +
+                    `${change.column ? '.' + change.column : ''} — ${change.severity}`
+                  );
+                }
+
+                report.push('');
+              }
+            }
+
+            report.push(
+              '---',
+              '_Generated by SchemaSentry. Verification uses an isolated synthetic database; it does not validate production data or application-level dependencies._'
+            );
+
+            const commentBody = report.join('\n');
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                per_page: 100
+              }
+            );
+
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' &&
+              comment.body?.includes('<!-- schemasentry-report -->')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+            if (blocked) {
+              core.setFailed('SchemaSentry found a blocked migration or an analysis error.');
+            } else if (hasReview) {
+              core.warning('SchemaSentry requires manual review for one or more migrations.');
+            } else {
+              core.notice('All migrations passed SchemaSentry verification.');
+            }
