@@ -1,7 +1,8 @@
 # SchemaSentry
 ### Built by Team: SchemaGuard
-App Demo: https://feel-brunette-sympathy-would.trycloudflare.com/
-Demo Video: https://drive.google.com/file/d/1syrqNmtXxxBmBkcjqyU8y3KApMeY0lqF/view?usp=sharing
+- App Demo: https://feel-brunette-sympathy-would.trycloudflare.com/
+- Demo Video: https://drive.google.com/file/d/1syrqNmtXxxBmBkcjqyU8y3KApMeY0lqF/view?usp=sharing
+
 **Isolated database migration verification with evidence-backed, intent-aware risk analysis.**
 
 SchemaSentry helps developers evaluate database migrations before they reach production. It executes submitted SQL against a disposable PostgreSQL environment, compares the database state before and after execution, calculates deterministic risk, and uses AI to explain the findings and assess whether the migration matches its stated intent.
