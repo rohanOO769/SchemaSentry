@@ -370,6 +370,23 @@ SchemaSentry/
 └── README.md
 ```
 
+## Screenshots
+- Process isolation
+    - Process isolation runs each migration in its own disposable environment, preventing one test from affecting another.
+    <img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/1e7a7a57-8656-4fe8-b74c-e9223ab31a70" />
+    
+- Safe migration
+- <img width="753" height="828" alt="image" src="https://github.com/user-attachments/assets/a87e88e3-84bb-4adf-9a4a-d8051edc577e" />
+  <img width="905" height="572" alt="image" src="https://github.com/user-attachments/assets/ac370471-773f-4462-beb8-a9057b031c2a" />
+
+- Risky migration
+- <img width="896" height="768" alt="image" src="https://github.com/user-attachments/assets/a2292eef-48b6-49bb-9184-75ba466dc7d2" />
+- <img width="1122" height="757" alt="image" src="https://github.com/user-attachments/assets/bf8ac933-dad9-48d1-a438-c5a644e1f30b" />
+
+
+
+
+
 ## Project
 
 Built for the **LabLab × Vultr Agent Rush** hackathon.
